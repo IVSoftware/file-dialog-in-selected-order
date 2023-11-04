@@ -16,14 +16,16 @@ namespace file_dialog_in_selected_order
             StartPosition = FormStartPosition.CenterScreen;
             buttonOpen.Click += (sender, e) =>
             {
-                ExecOpenInOrder(sender, e);
-                MessageBox.Show(string.Join(Environment.NewLine, NamesInOrder), caption: "Names in Order");
+                if (DialogResult.OK == ExecOpenInOrder(sender, e))
+                {
+                    MessageBox.Show(string.Join(Environment.NewLine, NamesInOrder), caption: "Names in Order");
+                }
             }; 
         }
 
         const int MAX_STRING = 256;
         const string OPEN_FILE_TITLE = "Open";
-        private void ExecOpenInOrder(object? sender, EventArgs e)
+        private DialogResult ExecOpenInOrder(object? sender, EventArgs e)
         {
             NamesInOrder.Clear();
             openFileDialog.Title = OPEN_FILE_TITLE;
@@ -37,6 +39,8 @@ namespace file_dialog_in_selected_order
             var dialogResult = DialogResult.None;
             localStartPollForChanges();
             dialogResult = openFileDialog.ShowDialog();
+            return dialogResult;
+
             async void localStartPollForChanges()
             {
                 while (dialogResult == DialogResult.None)
