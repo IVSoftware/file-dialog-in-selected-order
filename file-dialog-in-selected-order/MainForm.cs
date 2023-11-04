@@ -23,7 +23,7 @@ namespace file_dialog_in_selected_order
 
         const int MAX_STRING = 256;
         const string OPEN_FILE_TITLE = "Open";
-        private void ExecOpenInOrder(object? sender, EventArgs e)
+        private async void ExecOpenInOrder(object? sender, EventArgs e)
         {
             NamesInOrder.Clear();
             openFileDialog.Title = OPEN_FILE_TITLE;
@@ -35,9 +35,12 @@ namespace file_dialog_in_selected_order
             Directory.CreateDirectory(openFileDialog.InitialDirectory);
             openFileDialog.Multiselect = true;
             var dialogResult = DialogResult.None;
-            localStartPollForChanges();
+            localStartPollForOpenFileDialogWindow();
+            openFileDialog.ShowDialog();
+
             dialogResult = openFileDialog.ShowDialog();
-            async void localStartPollForChanges()
+
+            async void localStartPollForOpenFileDialogWindow()
             {
                 while (dialogResult == DialogResult.None)
                 {
@@ -51,6 +54,7 @@ namespace file_dialog_in_selected_order
                     if (sb.ToString() == OPEN_FILE_TITLE)
                     {
                         EnumChildWindows(hWndParent, localEnumChildWindowCallback, IntPtr.Zero);
+                        return;
                     }
                     await Task.Delay(TimeSpan.FromSeconds(0.1));
                 }
@@ -63,6 +67,7 @@ namespace file_dialog_in_selected_order
 
                 if (className.ToString() == "ComboBoxEx32")
                 {
+#if false
                     StringBuilder windowText = new StringBuilder(MAX_STRING);
                     GetWindowText(hWnd, windowText, MAX_STRING);
 
@@ -84,14 +89,9 @@ namespace file_dialog_in_selected_order
                             NamesInOrder.Add(name);
                         }
                     }
-                    Debug.WriteLine(string.Join(Environment.NewLine, NamesInOrder));
-
-                    if (windowText.ToString().Contains(".txt"))
-                    {
-                        return false;
-                    }
+#endif
                 }
-                return true;
+                return false;
             }
             string[] localGetNames(string text)
             {
@@ -108,6 +108,14 @@ namespace file_dialog_in_selected_order
         List<string> NamesInOrder { get; } = new List<string>();
 
         #region P I N V O K E
+
+        private const int WH_CALLWNDPROC = 4;
+        private const int WM_SETTEXT = 0x000C; 
+        
+        private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        private static HookProc hookProc;
+
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
@@ -121,6 +129,28 @@ namespace file_dialog_in_selected_order
 
         [DllImport("user32.dll")]
         private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CWPSTRUCT
+        {
+            public IntPtr lParam;
+            public IntPtr wParam;
+            public int message;
+            public IntPtr hwnd;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
         #endregion P I N V O K E
     }
 }
