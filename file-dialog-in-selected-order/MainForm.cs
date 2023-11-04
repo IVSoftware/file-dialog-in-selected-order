@@ -13,7 +13,12 @@ namespace file_dialog_in_selected_order
         public MainForm()
         {
             InitializeComponent();
-            buttonOpen.Click += ExecOpenInOrder;
+            StartPosition = FormStartPosition.CenterScreen;
+            buttonOpen.Click += (sender, e) =>
+            {
+                ExecOpenInOrder(sender, e);
+                MessageBox.Show(string.Join(Environment.NewLine, NamesInOrder), caption: "Names in Order");
+            }; 
         }
 
         const int MAX_STRING = 256;
@@ -42,7 +47,7 @@ namespace file_dialog_in_selected_order
                     {
                         GetWindowText(hWndParent, sb, MAX_STRING);
                     }
-                    Debug.WriteLine($"\nForeground window title: {sb}");
+                    Debug.WriteLine($"\n\nForeground window title: {sb}");
                     if (sb.ToString() == OPEN_FILE_TITLE)
                     {
                         EnumChildWindows(hWndParent, localEnumChildWindowCallback, IntPtr.Zero);
