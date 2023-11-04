@@ -16,15 +16,21 @@ namespace file_dialog_in_selected_order
             StartPosition = FormStartPosition.CenterScreen;
             buttonOpen.Click += (sender, e) =>
             {
-                ExecOpenInOrder(sender, e);
-                MessageBox.Show(string.Join(Environment.NewLine, NamesInOrder), caption: "Names in Order");
-            }; 
+                if (DialogResult.OK == ExecOpenInOrder(sender, e))
+                {
+                    MessageBox.Show(string.Join(Environment.NewLine, NamesInOrder), caption: "Names in Order");
+                }
+            };
         }
 
         const int MAX_STRING = 256;
         const string OPEN_FILE_TITLE = "Open";
-        private async void ExecOpenInOrder(object? sender, EventArgs e)
+        private DialogResult ExecOpenInOrder(object? sender, EventArgs e)
         {
+            IntPtr hook = IntPtr.Zero;
+            IntPtr hWndCombo = IntPtr.Zero;
+            string oldValue = string.Empty;
+
             NamesInOrder.Clear();
             openFileDialog.Title = OPEN_FILE_TITLE;
             openFileDialog.InitialDirectory =
@@ -35,10 +41,19 @@ namespace file_dialog_in_selected_order
             Directory.CreateDirectory(openFileDialog.InitialDirectory);
             openFileDialog.Multiselect = true;
             var dialogResult = DialogResult.None;
-            localStartPollForOpenFileDialogWindow();
-            openFileDialog.ShowDialog();
 
-            dialogResult = openFileDialog.ShowDialog();
+            // Hook the message filter
+            hookProc = new HookProc(localComboBoxMessageFilter);
+            hook = SetWindowsHookEx(WH_CALLWNDPROC, hookProc, IntPtr.Zero, GetCurrentThreadId());
+
+            if (hook != IntPtr.Zero)
+            {
+                localStartPollForOpenFileDialogWindow();
+                dialogResult = openFileDialog.ShowDialog();
+                UnhookWindowsHookEx(hook); // Dispose the hook
+            }
+
+            return dialogResult;
 
             async void localStartPollForOpenFileDialogWindow()
             {
@@ -67,32 +82,63 @@ namespace file_dialog_in_selected_order
 
                 if (className.ToString() == "ComboBoxEx32")
                 {
-#if false
-                    StringBuilder windowText = new StringBuilder(MAX_STRING);
-                    GetWindowText(hWnd, windowText, MAX_STRING);
-
-                    // Detect multiselect
-                    var names = localGetNames(windowText.ToString());
-                    foreach (var name in NamesInOrder.ToArray())
-                    {
-                        if(!names.Contains(name))
-                        {
-                            // Remove any names that aren't in new selection
-                            NamesInOrder.Remove(name);
-                        }
-                    }
-                    foreach (var name in names.ToArray())
-                    {
-                        // If NamesInOrder doesn't already hold the name, add it to the end.
-                        if (!NamesInOrder.Contains(name))
-                        {
-                            NamesInOrder.Add(name);
-                        }
-                    }
-#endif
+                    // Capture the hWnd of the combo box here
+                    hWndCombo = hWnd;
+                    return false; // Stop enumerating child windows
                 }
-                return false;
+                return true;
             }
+
+
+            nint localComboBoxMessageFilter(int nCode, nint wParam, nint lParam)
+            {
+                if (nCode >= 0)
+                {
+                    CWPSTRUCT cwp = (CWPSTRUCT)Marshal.PtrToStructure(lParam, typeof(CWPSTRUCT));
+                    if (cwp.message == WM_SETTEXT)
+                    {
+                        localDetectChangeAsync();
+                    }
+                }
+                return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
+
+                async void localDetectChangeAsync()
+                {
+                    StringBuilder sb = new StringBuilder(MAX_STRING);
+                    for (int i = 0; i < 10; i++)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(0.1));
+                        GetWindowText(hWndCombo, sb, MAX_STRING);
+                        var newValue = sb.ToString();
+                        if (newValue != oldValue)
+                        {
+                            // Detect multiselect
+                            var names = localGetNames(sb.ToString());
+                            foreach (var name in NamesInOrder.ToArray())
+                            {
+                                if (!names.Contains(name))
+                                {
+                                    // Remove any names that aren't in the new selection
+                                    NamesInOrder.Remove(name);
+                                }
+                            }
+                            foreach (var name in names.ToArray())
+                            {
+                                // If NamesInOrder doesn't already hold the name, add it to the end.
+                                if (!NamesInOrder.Contains(name))
+                                {
+                                    NamesInOrder.Add(name);
+                                }
+                            }
+                            oldValue = newValue;
+                            Debug.WriteLine("\n\n");
+                            Debug.WriteLine(string.Join(Environment.NewLine, NamesInOrder));
+                            break;
+                        }
+                    }
+                }
+            }
+
             string[] localGetNames(string text)
             {
                 string[] names =
@@ -100,18 +146,20 @@ namespace file_dialog_in_selected_order
                         .Matches(text.ToString(), pattern: @"""(.*?)\""")
                         .Select(_ => _.Value.Trim(@"""".ToCharArray()))
                         .ToArray();
-                // But it there's only one name, the pattern
-                // will never 'hit' so return the single name 
+                // But if there's only one name, the pattern
+                // will never 'hit', so return the single name
                 return names.Any() ? names : new string[] { text };
             }
         }
+
         List<string> NamesInOrder { get; } = new List<string>();
 
         #region P I N V O K E
 
         private const int WH_CALLWNDPROC = 4;
         private const int WM_SETTEXT = 0x000C; 
-        
+        private const int CBN_EDITCHANGE = 5;
+
         private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         private static HookProc hookProc;
