@@ -85,11 +85,7 @@ namespace file_dialog_in_selected_order
                         }
                     }
                     Debug.WriteLine(string.Join(Environment.NewLine, NamesInOrder));
-
-                    if (windowText.ToString().Contains(".txt"))
-                    {
-                        return false;
-                    }
+                    return false;
                 }
                 return true;
             }
